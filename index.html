@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Generate private tracking links, receive live coordinates, and view directions between host and target devices.">
+  <title>Location Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%234f46e5' d='M16 2c-5.5 0-10 4.4-10 9.9 0 7 8.8 16.5 9.2 16.9a1.1 1.1 0 0 0 1.6 0C17.2 28.4 26 19 26 11.9 26 6.4 21.5 2 16 2Zm0 13.2a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <noscript>
+    <div class="noscript-banner">This application requires JavaScript to create tracking links and share live locations.</div>
+  </noscript>
+
+  <div class="app-shell">
+    <header class="hero panel">
+      <div>
+        <p class="eyebrow">Real-time host and target tracking</p>
+        <h1>Location Tracker</h1>
+        <p class="hero-copy">
+          Create a private session link for a target, receive the target device location in real time after permission is granted,
+          and view directions between the host and target devices on a clean live map.
+        </p>
+      </div>
+
+      <div class="hero-status">
+        <div class="status-pill-group">
+          <span class="meta-label">App status</span>
+          <strong id="appConnectionBadge" class="badge badge-muted">Connecting…</strong>
+        </div>
+        <div class="status-pill-group">
+          <span class="meta-label">Current mode</span>
+          <strong id="currentModeBadge" class="badge badge-muted">Loading…</strong>
+        </div>
+      </div>
+    </header>
+
+    <div id="globalStatus" class="status-banner status-info" role="status" aria-live="polite">
+      Loading application…
+    </div>
+
+    <main>
+      <section id="landingView" class="view-stack">
+        <div class="grid grid-2">
+          <article class="panel section-card form-card">
+            <div class="section-heading">
+              <h2>Create a tracking session</h2>
+              <p>
+                Enter host and target information. A unique link will be generated for the target person to open on their device.
+              </p>
+            </div>
+
+            <form id="createSessionForm" class="stack-form">
+              <label class="field">
+                <span>Host name</span>
+                <input id="hostNameInput" name="hostName" type="text" placeholder="e.g. Mustapha" maxlength="60" required>
+              </label>
+
+              <label class="field">
+                <span>Target name</span>
+                <input id="targetNameInput" name="targetName" type="text" placeholder="e.g. John Doe" maxlength="60" required>
+              </label>
+
+              <label class="field">
+                <span>Target email</span>
+                <input id="targetEmailInput" name="targetEmail" type="email" placeholder="e.g. john@example.com" maxlength="120" required>
+              </label>
+
+              <button class="btn btn-primary" type="submit">Generate unique link</button>
+            </form>
+          </article>
+
+          <article class="panel section-card info-card">
+            <div class="section-heading">
+              <h2>How it works</h2>
+            </div>
+
+            <ol class="feature-list ordered-list">
+              <li>Create a host session with the target person's name and email.</li>
+              <li>Copy the generated private link and share it with the target.</li>
+              <li>The target opens the link and grants location permission.</li>
+              <li>The system continuously streams the target coordinates to the host dashboard.</li>
+              <li>The host can also share their own location and request directions to the target.</li>
+            </ol>
+
+            <div class="subtle-note">
+              This demo uses an in-memory local server session store. Sessions persist while the server is running.
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="hostView" class="view-stack hidden">
+        <div class="grid grid-3-top">
+          <article class="panel section-card summary-card">
+            <div class="section-heading compact">
+              <h2>Session summary</h2>
+              <p>Track who created the session and who is being monitored.</p>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="meta-label">Host</span>
+                <strong id="hostNameValue">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Target</span>
+                <strong id="targetNameValue">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Target email</span>
+                <strong id="targetEmailValue">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Session ID</span>
+                <strong id="sessionIdValue">—</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel section-card share-card">
+            <div class="section-heading compact">
+              <h2>Unique target link</h2>
+              <p>Copy this link and send it to the target device.</p>
+            </div>
+
+            <label class="field">
+              <span>Generated link</span>
+              <textarea id="shareLinkOutput" rows="4" readonly></textarea>
+            </label>
+
+            <div class="button-row">
+              <button id="copyLinkBtn" type="button" class="btn btn-primary">Copy link</button>
+              <button id="newSessionBtn" type="button" class="btn btn-ghost">Create new session</button>
+            </div>
+          </article>
+
+          <article class="panel section-card host-controls-card">
+            <div class="section-heading compact">
+              <h2>Host controls</h2>
+              <p>Optionally share the host device location for distance and routing.</p>
+            </div>
+
+            <div class="button-stack">
+              <button id="startHostTrackingBtn" type="button" class="btn btn-secondary">Start host tracking</button>
+              <button id="stopHostTrackingBtn" type="button" class="btn btn-ghost" disabled>Stop host tracking</button>
+              <button id="centerTargetBtn" type="button" class="btn btn-ghost">Center on target</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <label class="field">
+              <span>Directions profile</span>
+              <select id="routeProfileSelect">
+                <option value="driving">Driving</option>
+                <option value="walking">Walking</option>
+                <option value="cycling">Cycling</option>
+              </select>
+            </label>
+
+            <button id="getDirectionsBtn" type="button" class="btn btn-primary">Show route to target</button>
+          </article>
+        </div>
+
+        <div class="grid grid-main-host">
+          <article class="panel section-card map-card">
+            <div class="section-heading compact">
+              <h2>Live map</h2>
+              <p>Host and target markers update in real time as new coordinates arrive.</p>
+            </div>
+            <div id="map" aria-label="Host live tracking map"></div>
+          </article>
+
+          <div class="host-side-stack">
+            <article class="panel section-card metrics-card">
+              <div class="section-heading compact">
+                <h2>Latest target update</h2>
+                <p>The most recent location received from the target device.</p>
+              </div>
+
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <span class="meta-label">Latitude</span>
+                  <strong id="targetLatitudeValue">—</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="meta-label">Longitude</span>
+                  <strong id="targetLongitudeValue">—</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="meta-label">Accuracy</span>
+                  <strong id="targetAccuracyValue">—</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="meta-label">Last update</span>
+                  <strong id="targetUpdatedValue">—</strong>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel section-card route-card">
+              <div class="section-heading compact">
+                <h2>Route details</h2>
+                <p>Directions between the host device and the target device.</p>
+              </div>
+
+              <div class="route-summary-grid">
+                <div class="summary-item">
+                  <span class="meta-label">Distance</span>
+                  <strong id="routeDistanceValue">—</strong>
+                </div>
+                <div class="summary-item">
+                  <span class="meta-label">Duration</span>
+                  <strong id="routeDurationValue">—</strong>
+                </div>
+              </div>
+
+              <ul id="routeStepsList" class="detail-list empty-list">
+                <li>No route calculated yet.</li>
+              </ul>
+            </article>
+
+            <article class="panel section-card activity-card">
+              <div class="section-heading compact">
+                <h2>Live activity</h2>
+                <p>Recent events for host and target updates.</p>
+              </div>
+
+              <ul id="activityList" class="detail-list empty-list">
+                <li>No activity yet.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="targetView" class="view-stack hidden">
+        <div class="grid grid-2-target">
+          <article class="panel section-card target-card">
+            <div class="section-heading">
+              <h2>Share your live location</h2>
+              <p>
+                <span id="targetGreeting">A host has requested your live location.</span>
+                After permission is granted, this page will continuously send your coordinates to the host dashboard in real time.
+              </p>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-item">
+                <span class="meta-label">Host</span>
+                <strong id="targetViewHostName">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Target</span>
+                <strong id="targetViewTargetName">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Target email</span>
+                <strong id="targetViewTargetEmail">—</strong>
+              </div>
+              <div class="summary-item">
+                <span class="meta-label">Sharing status</span>
+                <strong id="targetSharingState">Idle</strong>
+              </div>
+            </div>
+
+            <div class="button-row top-gap">
+              <button id="startTargetSharingBtn" type="button" class="btn btn-primary">Grant permission and start sharing</button>
+              <button id="stopTargetSharingBtn" type="button" class="btn btn-ghost" disabled>Stop sharing</button>
+            </div>
+
+            <div class="subtle-note top-gap">
+              Your location is only sent to the locally running tracking session connected to this link.
+            </div>
+          </article>
+
+          <article class="panel section-card target-status-card">
+            <div class="section-heading compact">
+              <h2>Latest sent coordinates</h2>
+              <p>Your latest transmitted device details appear below.</p>
+            </div>
+
+            <div class="stats-grid target-stats-grid">
+              <div class="stat-card">
+                <span class="meta-label">Latitude</span>
+                <strong id="selfLatitudeValue">—</strong>
+              </div>
+              <div class="stat-card">
+                <span class="meta-label">Longitude</span>
+                <strong id="selfLongitudeValue">—</strong>
+              </div>
+              <div class="stat-card">
+                <span class="meta-label">Accuracy</span>
+                <strong id="selfAccuracyValue">—</strong>
+              </div>
+              <div class="stat-card">
+                <span class="meta-label">Last sent</span>
+                <strong id="selfUpdatedValue">—</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
