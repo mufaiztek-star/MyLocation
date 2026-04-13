@@ -365,6 +365,23 @@ textarea {
   margin-top: 1rem;
 }
 
+.map-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.map-toolbar-row {
+  align-items: center;
+}
+
+.inline-field {
+  min-width: 180px;
+}
+
 #map {
   width: 100%;
   min-height: 620px;
@@ -414,6 +431,59 @@ textarea {
   box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.45);
 }
 
+.leaflet-control-layers,
+.map-action-control {
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  background: rgba(8, 15, 29, 0.92) !important;
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.32) !important;
+  border-radius: 14px !important;
+  color: var(--text);
+}
+
+.leaflet-control-layers {
+  padding: 0.3rem;
+}
+
+.leaflet-control-layers label {
+  color: var(--text);
+}
+
+.leaflet-control-layers-expanded {
+  min-width: 150px;
+}
+
+.map-action-control {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+}
+
+.map-control-btn {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  background: transparent;
+  color: var(--text);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-control-btn:last-child {
+  border-bottom: 0;
+}
+
+.map-control-btn:hover:not(:disabled),
+.map-control-btn.active {
+  background: rgba(79, 70, 229, 0.18);
+}
+
+.map-control-btn:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .leaflet-control-attribution {
   font-size: 0.72rem;
 }
@@ -451,6 +521,11 @@ textarea {
 
   .hero {
     flex-direction: column;
+  }
+
+  .map-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .stats-grid,

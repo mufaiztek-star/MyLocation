@@ -4,6 +4,11 @@ const state = {
   session: null,
   eventSource: null,
   map: null,
+  tileLayers: {},
+  currentTileLayer: null,
+  layerControl: null,
+  scaleControl: null,
+  mapActionControl: null,
   hostMarker: null,
   targetMarker: null,
   hostAccuracyCircle: null,
@@ -16,6 +21,7 @@ const state = {
   latestTargetLocation: null,
   activity: [],
   routeProfile: "driving",
+  followTarget: true,
 };
 
 const elements = {
@@ -39,6 +45,10 @@ const elements = {
   startHostTrackingBtn: document.getElementById("startHostTrackingBtn"),
   stopHostTrackingBtn: document.getElementById("stopHostTrackingBtn"),
   centerTargetBtn: document.getElementById("centerTargetBtn"),
+  followTargetBtn: document.getElementById("followTargetBtn"),
+  fitMarkersBtn: document.getElementById("fitMarkersBtn"),
+  openStreetViewBtn: document.getElementById("openStreetViewBtn"),
+  mapStyleSelect: document.getElementById("mapStyleSelect"),
   routeProfileSelect: document.getElementById("routeProfileSelect"),
   getDirectionsBtn: document.getElementById("getDirectionsBtn"),
   targetLatitudeValue: document.getElementById("targetLatitudeValue"),
@@ -71,10 +81,41 @@ document.addEventListener("DOMContentLoaded", () => {
 function initializeMap() {
   state.map = L.map("map", { zoomControl: true }).setView([9.082, 8.6753], 5);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(state.map);
+  state.tileLayers = {
+    street: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }),
+    satellite: L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri',
+      },
+    ),
+    terrain: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+      maxZoom: 17,
+      attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap',
+    }),
+  };
+
+  state.currentTileLayer = state.tileLayers.street;
+  state.currentTileLayer.addTo(state.map);
+
+  state.layerControl = L.control.layers(
+    {
+      Street: state.tileLayers.street,
+      Satellite: state.tileLayers.satellite,
+      Terrain: state.tileLayers.terrain,
+    },
+    {},
+    { position: "topright", collapsed: false },
+  ).addTo(state.map);
+
+  state.scaleControl = L.control.scale({ imperial: false, position: "bottomleft" }).addTo(state.map);
+
+  state.mapActionControl = createMapActionControl();
+  state.mapActionControl.addTo(state.map);
 
   state.targetTrail = L.polyline([], {
     color: "#ef4444",
@@ -88,6 +129,13 @@ function initializeMap() {
     opacity: 0.85,
     dashArray: "10 8",
   }).addTo(state.map);
+
+  state.map.on("baselayerchange", (event) => {
+    const nextStyle = Object.entries(state.tileLayers).find(([, layer]) => layer === event.layer)?.[0] || "street";
+    if (elements.mapStyleSelect) {
+      elements.mapStyleSelect.value = nextStyle;
+    }
+  });
 }
 
 function bindEvents() {
@@ -97,6 +145,12 @@ function bindEvents() {
   elements.startHostTrackingBtn?.addEventListener("click", startHostTracking);
   elements.stopHostTrackingBtn?.addEventListener("click", stopHostTracking);
   elements.centerTargetBtn?.addEventListener("click", centerOnTarget);
+  elements.followTargetBtn?.addEventListener("click", toggleLiveFollow);
+  elements.fitMarkersBtn?.addEventListener("click", fitMapToRelevantBounds);
+  elements.openStreetViewBtn?.addEventListener("click", openStreetView);
+  elements.mapStyleSelect?.addEventListener("change", (event) => {
+    switchMapStyle(event.target.value);
+  });
   elements.routeProfileSelect?.addEventListener("change", (event) => {
     state.routeProfile = event.target.value;
   });
@@ -222,6 +276,8 @@ function renderHostSession(session) {
 
   resetRouteUi();
   renderActivity();
+  refreshFollowButton();
+  updateStreetViewButtonState();
 
   if (session.latestTargetLocation) {
     updateTargetMetrics(session.latestTargetLocation);
@@ -402,6 +458,7 @@ function clearMapLayers() {
   state.hostAccuracyCircle = null;
   state.targetAccuracyCircle = null;
   resetRouteUi();
+  updateStreetViewButtonState();
 }
 
 function updateTargetMetrics(location) {
@@ -410,6 +467,7 @@ function updateTargetMetrics(location) {
   elements.targetLongitudeValue.textContent = formatCoordinate(location.longitude);
   elements.targetAccuracyValue.textContent = `${Math.round(location.accuracy)} m`;
   elements.targetUpdatedValue.textContent = formatDateTime(location.timestamp || location.updatedAt);
+  updateStreetViewButtonState();
 }
 
 function plotTargetLocation(location) {
@@ -429,7 +487,17 @@ function plotTargetLocation(location) {
   }
 
   state.targetTrail.addLatLng(latLng);
-  state.map.setView(latLng, 15);
+
+  if (state.followTarget) {
+    state.map.panTo(latLng, {
+      animate: true,
+      duration: 1,
+    });
+
+    if ((state.map.getZoom() || 0) < 15) {
+      state.map.setZoom(15);
+    }
+  }
 }
 
 function createMarker(latLng, color, label) {
@@ -517,7 +585,10 @@ function centerOnTarget() {
     return;
   }
 
-  state.map.setView([state.latestTargetLocation.latitude, state.latestTargetLocation.longitude], 16);
+  state.map.flyTo([state.latestTargetLocation.latitude, state.latestTargetLocation.longitude], 16, {
+    animate: true,
+    duration: 1,
+  });
 }
 
 async function fetchDirections() {
@@ -717,6 +788,98 @@ function resetRouteUi() {
   state.routeLine.setLatLngs([]);
 }
 
+function toggleLiveFollow() {
+  state.followTarget = !state.followTarget;
+  refreshFollowButton();
+
+  if (state.followTarget && state.latestTargetLocation) {
+    centerOnTarget();
+  }
+}
+
+function refreshFollowButton() {
+  if (!elements.followTargetBtn) {
+    return;
+  }
+
+  elements.followTargetBtn.textContent = `Live follow: ${state.followTarget ? "On" : "Off"}`;
+  elements.followTargetBtn.className = `btn ${state.followTarget ? "btn-secondary" : "btn-ghost"}`;
+
+  const floatingToggle = document.querySelector("[data-map-action='follow']");
+  if (floatingToggle) {
+    floatingToggle.textContent = state.followTarget ? "Follow on" : "Follow off";
+    floatingToggle.classList.toggle("active", state.followTarget);
+  }
+}
+
+function switchMapStyle(styleName) {
+  const nextLayer = state.tileLayers[styleName] || state.tileLayers.street;
+
+  if (state.currentTileLayer === nextLayer) {
+    return;
+  }
+
+  if (state.currentTileLayer) {
+    state.map.removeLayer(state.currentTileLayer);
+  }
+
+  state.currentTileLayer = nextLayer;
+  state.currentTileLayer.addTo(state.map);
+  setGlobalStatus(`Map style switched to ${capitalize(styleName)} view.`, "info");
+}
+
+function fitMapToRelevantBounds() {
+  const layers = [];
+
+  if (state.hostMarker) {
+    layers.push(state.hostMarker);
+  }
+
+  if (state.targetMarker) {
+    layers.push(state.targetMarker);
+  }
+
+  const routePoints = state.routeLine.getLatLngs();
+  if (routePoints.length) {
+    layers.push(state.routeLine);
+  }
+
+  const trailPoints = state.targetTrail.getLatLngs();
+  if (trailPoints.length > 1) {
+    layers.push(state.targetTrail);
+  }
+
+  if (!layers.length) {
+    setGlobalStatus("No map markers are available yet to fit on the map.", "warning");
+    return;
+  }
+
+  const group = L.featureGroup(layers);
+  state.map.fitBounds(group.getBounds(), { padding: [36, 36], animate: true });
+}
+
+function updateStreetViewButtonState() {
+  if (elements.openStreetViewBtn) {
+    elements.openStreetViewBtn.disabled = !state.latestTargetLocation;
+  }
+
+  const streetViewBtn = document.querySelector("[data-map-action='streetview']");
+  if (streetViewBtn) {
+    streetViewBtn.disabled = !state.latestTargetLocation;
+  }
+}
+
+function openStreetView() {
+  if (!state.latestTargetLocation) {
+    setGlobalStatus("No target location is available yet for street view.", "warning");
+    return;
+  }
+
+  const { latitude, longitude } = state.latestTargetLocation;
+  const url = `https://www.google.com/maps?q=&layer=c&cbll=${latitude},${longitude}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function normalizeCoords(position) {
   return {
     latitude: position.coords.latitude,
@@ -782,4 +945,33 @@ function capitalize(value) {
   }
 
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function createMapActionControl() {
+  const MapActionControl = L.Control.extend({
+    options: {
+      position: "topleft",
+    },
+    onAdd() {
+      const container = L.DomUtil.create("div", "leaflet-bar leaflet-control map-action-control");
+      container.innerHTML = `
+        <button type="button" class="map-control-btn active" data-map-action="follow">Follow on</button>
+        <button type="button" class="map-control-btn" data-map-action="fit">Fit</button>
+        <button type="button" class="map-control-btn" data-map-action="target">Target</button>
+        <button type="button" class="map-control-btn" data-map-action="streetview" disabled>Street View</button>
+      `;
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      container.querySelector("[data-map-action='follow']")?.addEventListener("click", toggleLiveFollow);
+      container.querySelector("[data-map-action='fit']")?.addEventListener("click", fitMapToRelevantBounds);
+      container.querySelector("[data-map-action='target']")?.addEventListener("click", centerOnTarget);
+      container.querySelector("[data-map-action='streetview']")?.addEventListener("click", openStreetView);
+
+      return container;
+    },
+  });
+
+  return new MapActionControl();
 }

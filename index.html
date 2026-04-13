@@ -169,7 +169,23 @@
           <article class="panel section-card map-card">
             <div class="section-heading compact">
               <h2>Live map</h2>
-              <p>Host and target markers update in real time as new coordinates arrive.</p>
+              <p>Host and target markers update smoothly in real time as coordinates change.</p>
+            </div>
+            <div class="map-toolbar">
+              <div class="button-row map-toolbar-row">
+                <button id="followTargetBtn" type="button" class="btn btn-secondary">Live follow: On</button>
+                <button id="fitMarkersBtn" type="button" class="btn btn-ghost">Fit markers</button>
+                <button id="openStreetViewBtn" type="button" class="btn btn-ghost" disabled>Open street view</button>
+              </div>
+
+              <label class="field inline-field">
+                <span>Map style</span>
+                <select id="mapStyleSelect">
+                  <option value="street">Street</option>
+                  <option value="satellite">Satellite</option>
+                  <option value="terrain">Terrain</option>
+                </select>
+              </label>
             </div>
             <div id="map" aria-label="Host live tracking map"></div>
           </article>
