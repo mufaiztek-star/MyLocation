@@ -41,6 +41,39 @@ Then open:
 http://localhost:3000
 ```
 
+## Deploy on Render
+
+This project is ready for Render deployment.
+
+### Option 1: Use `render.yaml`
+
+After pushing this project to GitHub:
+
+1. Create a new **Blueprint** on Render.
+2. Select the repository.
+3. Render will detect `render.yaml` and create the web service automatically.
+
+Included Render settings:
+
+- **Runtime:** Node
+- **Build Command:** `npm install`
+- **Start Command:** `npm start`
+- **Health Check Path:** `/api/health`
+- **Node Version:** `20`
+
+### Option 2: Manual Web Service setup
+
+If you prefer to configure Render manually, use these settings:
+
+- **Environment:** Node
+- **Build Command:** `npm install`
+- **Start Command:** `npm start`
+- **Health Check Path:** `/api/health`
+
+### Important deployment note
+
+This app stores sessions only in server memory. On Render, any restart, redeploy, or instance sleep/wake cycle will clear active sessions. For persistent production usage, sessions should be moved to a database or Redis.
+
 ## Notes
 
 - Sessions are stored in memory, so restarting the server clears active sessions.
